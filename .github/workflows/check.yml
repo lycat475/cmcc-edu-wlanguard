@@ -1,0 +1,73 @@
+name: 构建检查
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: 编译 C# + 检查遗留脚本
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 编译 C#（用系统自带 csc.exe）
+        shell: powershell
+        run: .\build.ps1
+
+      - name: 确认产物存在
+        shell: powershell
+        run: |
+          $exe = 'dist\CMCC-EDU网络守护.exe'
+          if (-not (Test-Path $exe)) {
+            Write-Host "::error::编译没有产出 $exe"
+            exit 1
+          }
+          $item = Get-Item $exe
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          Write-Host "产物: $exe"
+          Write-Host "大小: $([math]::Round($item.Length/1KB,1)) KB"
+          Write-Host "SHA256: $hash"
+
+      - name: 解析所有 .ps1
+        shell: pwsh
+        run: |
+          $failed = 0
+          $files = Get-ChildItem -Recurse -Filter *.ps1
+          foreach ($f in $files) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
+            if ($errors -and $errors.Count -gt 0) {
+              $failed += $errors.Count
+              foreach ($e in $errors) {
+                Write-Host "::error file=$($f.Name),line=$($e.Extent.StartLineNumber)::$($e.Message)"
+              }
+            } else {
+              Write-Host "OK   $($f.Name)"
+            }
+          }
+          if ($failed -gt 0) {
+            Write-Host "`n共 $failed 个语法错误"
+            exit 1
+          }
+          Write-Host "`n$($files.Count) 个脚本语法检查通过"
+
+      - name: 检查是否误提交了隐私文件
+        shell: pwsh
+        run: |
+          $bad = @()
+          foreach ($p in @('config.json', 'config.json.bak', 'status.json', 'guard.pid', 'auth_headers.log', 'autologin.log', 'captcha.req.json')) {
+            if (Test-Path $p) { $bad += $p }
+          }
+          Get-ChildItem -Recurse -Include *.log, *.pid | ForEach-Object { $bad += $_.Name }
+          if ($bad.Count -gt 0) {
+            Write-Host "::error::仓库里出现了不该提交的本地文件：$($bad -join ', ')"
+            exit 1
+          }
+          Write-Host "未发现隐私/运行时文件 ✅"
