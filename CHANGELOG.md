@@ -32,6 +32,14 @@ DHCP 无法为网卡从网络续订地址，错误 0x79（ERROR_SEM_TIMEOUT）
 
 认证流程、cookie 免密、界面布局都没动。改动集中在网络探测（`Network.cs`）、结果分类（`LoginRunner.cs`）和守护循环（`Guard.cs`）。
 
+**校验**
+
+```
+文件: CMCC-EDU网络守护_v2.1.6.zip
+大小: 131.6 KB
+SHA256: AEDA39018F15D5F8600AF56572A731EA4904DE3A1A705657310D8258B6E31930
+```
+
 ---
 ## v2.1.5 — 2026-10-21
 
