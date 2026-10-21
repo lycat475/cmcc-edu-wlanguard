@@ -449,6 +449,7 @@ namespace CmccEdu
                 case "online":  _lblNet.Text = "网络状态：已联网"; _lblNet.ForeColor = COk; break;
                 case "offline": _lblNet.Text = "网络状态：未联网"; _lblNet.ForeColor = CWarn; break;
                 case "busy":    _lblNet.Text = "网络状态：认证进行中"; _lblNet.ForeColor = CWarn; break;
+                case "waiting": _lblNet.Text = "网络状态：等待网络分配地址"; _lblNet.ForeColor = CWarn; break;
                 case "captcha": _lblNet.Text = "网络状态：等待输入验证码"; _lblNet.ForeColor = CWarn; break;
                 case "error":   _lblNet.Text = "网络状态：异常"; _lblNet.ForeColor = CBad; break;
                 default:        _lblNet.Text = "网络状态：未知"; _lblNet.ForeColor = CMuted; break;

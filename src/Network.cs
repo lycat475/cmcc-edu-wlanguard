@@ -1,7 +1,9 @@
 using System;
 using System.Net;
+using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Text.RegularExpressions;
 
 namespace CmccEdu
@@ -115,6 +117,96 @@ namespace CmccEdu
         /// <summary>
         /// 当前是否连在指定 SSID 上。判断不出来时返回 true（宁可尝试认证，也不要误判为"不在目标网络"）。
         /// </summary>
+        /// <summary>
+        /// 按 SSID 找到对应的网卡名（例如 "WLAN"），用于 ipconfig 之类的命令。
+        /// 找不到返回 null。
+        /// </summary>
+        public static string GetSsidAdapterName(string ssid)
+        {
+            if (string.IsNullOrEmpty(ssid)) return null;
+            try
+            {
+                string currentGuid = null, hitGuid = null;
+                var output = RunNetsh();
+                foreach (var rawLine in output.Split('\n'))
+                {
+                    var line = rawLine.TrimEnd('\r');
+                    var mGuid = Regex.Match(line, @"^\s*GUID\s*:\s*(\{?[0-9a-fA-F\-]+\}?)\s*$");
+                    if (mGuid.Success) { currentGuid = mGuid.Groups[1].Value; continue; }
+
+                    var mSsid = Regex.Match(line, @"^\s*SSID\s*:\s*(.+?)\s*$");
+                    if (mSsid.Success && currentGuid != null &&
+                        string.Equals(mSsid.Groups[1].Value.Trim(), ssid, StringComparison.Ordinal))
+                    {
+                        hitGuid = currentGuid;
+                        break;
+                    }
+                }
+                if (hitGuid == null) return null;
+
+                string want = hitGuid.Trim('{', '}').ToLowerInvariant();
+                foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (string.Equals(ni.Id.ToLowerInvariant(), want, StringComparison.Ordinal))
+                        return ni.Name;
+                }
+                return null;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// 让指定 SSID 的网卡重新向 DHCP 申请地址，并等待最多 10 秒看是否拿到。
+        /// 只在「连着目标 WiFi 但没有 IP」时调用，所以不会打断正常网络。
+        /// </summary>
+        /// <param name="ssid">目标 WiFi 名。</param>
+        /// <param name="message">失败原因。</param>
+        public static bool RenewDhcpForSsid(string ssid, out string message)
+        {
+            message = null;
+
+            string adapterName = GetSsidAdapterName(ssid);
+            if (string.IsNullOrEmpty(adapterName))
+            {
+                message = "找不到对应的网卡";
+                return false;
+            }
+
+            try
+            {
+                var psi = new ProcessStartInfo("ipconfig.exe", "/renew \"" + adapterName + "\"")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using (var proc = Process.Start(psi))
+                {
+                    if (proc == null) { message = "无法启动 ipconfig"; return false; }
+                    if (!proc.WaitForExit(15000))
+                    {
+                        try { proc.Kill(); } catch { }
+                        message = "ipconfig 超时";
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                message = ex.Message;
+                return false;
+            }
+
+            // 不解析 ipconfig 的输出（中文系统编码不稳），直接看网卡有没有拿到地址
+            for (int i = 0; i < 20; i++)
+            {
+                if (!string.IsNullOrEmpty(GetSsidAdapterIp(ssid))) return true;
+                Thread.Sleep(500);
+            }
+
+            message = "重新申请后仍然没有地址";
+            return false;
+        }
+
         public static bool IsOnSsid(string ssid)
         {
             if (string.IsNullOrWhiteSpace(ssid)) return true;

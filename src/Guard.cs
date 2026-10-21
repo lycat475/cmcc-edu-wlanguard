@@ -173,6 +173,8 @@ namespace CmccEdu
                     int interval = 60;
                     int fails = 0;
                     string prevState = null;
+                    DateTime noIpSince = DateTime.MinValue;   // 连着目标 WiFi 却没地址的起始时间
+                    int renewTries = 0;                       // 本次无地址期间催过几次 DHCP
 
                     while (true)
                     {
@@ -240,6 +242,36 @@ namespace CmccEdu
                                     if (prevState != "retry") AppLog.Write(r.Message, "NET");
                                     prevState = "retry";
                                     Status.Write("offline", r.Message, "retry", interval, fails);
+                                }
+                                else if (r.Kind == "no-ip")
+                                {
+                                    // 网卡没地址：这时候做任何认证都不可能成功，只能催 DHCP
+                                    if (prevState != "no_ip")
+                                    {
+                                        noIpSince = DateTime.Now;
+                                        renewTries = 0;
+                                        AppLog.Write("已连接 " + settings.Ssid + " 但没有拿到 IP 地址（DHCP 未响应）", "NET");
+                                        prevState = "no_ip";
+                                    }
+
+                                    if (renewTries < 3 && (DateTime.Now - noIpSince).TotalSeconds >= 30)
+                                    {
+                                        renewTries++;
+                                        string why;
+                                        bool renewed = Network.RenewDhcpForSsid(settings.Ssid, out why);
+                                        AppLog.Write(renewed
+                                            ? "重新申请 IP 成功（第 " + renewTries + " 次）"
+                                            : "重新申请 IP 失败（第 " + renewTries + " 次）：" + why, "NET");
+                                        noIpSince = DateTime.Now;   // 重新计时，别连续发
+                                    }
+
+                                    Status.Write("waiting",
+                                        "已连接 " + settings.Ssid + " 但未获得 IP 地址，正在等待网络分配" +
+                                        (renewTries > 0 ? "（已重新申请 " + renewTries + " 次）" : ""),
+                                        "waiting-ip", interval, fails);
+
+                                    // 没地址时 5 秒一次没意义，拉长到 10 秒
+                                    nextDelay = 10;
                                 }
                                 else if (r.Kind == "need-manual")
                                 {

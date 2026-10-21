@@ -24,10 +24,13 @@ namespace CmccEdu
                     var rc = portal.CookieLogin(s);
                     if (rc.Ok) { rc.Mode = s.LoginMode; return rc; }
 
+                    // 网卡没地址是网络层问题，单独传出去让守护去催 DHCP
+                    if (rc.Kind == "no-ip") return LoginResult.Fail("no-ip", rc.Message);
+
                     bool credentialGone = rc.Kind == "not-recognized" || rc.Kind == "rejected";
                     if (!credentialGone)
                     {
-                        // 拿不到 IP、请求超时这类是环境问题，提示用户去输验证码毫无意义
+                        // 请求超时这类是环境问题，提示用户去输验证码毫无意义
                         AppLog.Write("cookie 登录暂时失败（" + rc.Message + "），稍后重试", "COOKIE");
                         return LoginResult.Fail("retry", "暂时无法认证：" + rc.Message + "，稍后自动重试");
                     }
