@@ -8,13 +8,14 @@ using System.IO;
 namespace CmccEdu
 {
     /// <summary>
-    /// 托盘/窗口图标。wifi.ico 的 256×256 帧四周有大量透明留白，
-    /// 且 ICO 自带的位图帧被 .NET 读出来是花屏，所以统一从源图渲染。
+    /// 托盘/窗口图标。统一从 app.ico 渲染，而不是直接用 ICO 自带的位图帧
+    /// （早期 wifi.ico 的帧被 .NET 读出来是花屏，那套逻辑保留至今）。
+    /// 图形在源图里的位置用运行时扫描 alpha 算出来，换图标文件也不用改代码。
     /// </summary>
     internal static class IconFactory
     {
-        // 源图里图形实际占的范围（去掉透明边）
-        private static readonly Rectangle ContentRect = new Rectangle(32, 85, 193, 134);
+        /// <summary>源图里图形实际占的范围（去掉透明边），加载时算一次。</summary>
+        private static Rectangle _content = Rectangle.Empty;
 
         private static Image _source;
         private static readonly object Gate = new object();
@@ -27,7 +28,7 @@ namespace CmccEdu
                 {
                     if (_source == null)
                     {
-                        string path = Path.Combine(AppEnv.Root, "assets", "wifi.ico");
+                        string path = Path.Combine(AppEnv.Root, "assets", "app.ico");
                         // 一次读完就断开文件句柄，避免占住文件
                         using (var raw = Image.FromFile(path))
                         {
@@ -38,11 +39,33 @@ namespace CmccEdu
                                 g.DrawImage(raw, 0, 0, raw.Width, raw.Height);
                             }
                             _source = copy;
+                            _content = ComputeContentRect(copy);
                         }
                     }
                     return _source;
                 }
             }
+        }
+
+        /// <summary>扫描非透明像素，算出图形在源图里的包围盒。</summary>
+        private static Rectangle ComputeContentRect(Bitmap bmp)
+        {
+            int minX = bmp.Width, minY = bmp.Height, maxX = -1, maxY = -1;
+
+            for (int y = 0; y < bmp.Height; y++)
+            {
+                for (int x = 0; x < bmp.Width; x++)
+                {
+                    if (bmp.GetPixel(x, y).A <= 8) continue;
+                    if (x < minX) minX = x;
+                    if (y < minY) minY = y;
+                    if (x > maxX) maxX = x;
+                    if (y > maxY) maxY = y;
+                }
+            }
+
+            if (maxX < 0) return new Rectangle(0, 0, bmp.Width, bmp.Height);   // 全透明就退回整张图
+            return new Rectangle(minX, minY, maxX - minX + 1, maxY - minY + 1);
         }
 
         public static Bitmap CreateBitmap(int size, Color? dot)
@@ -55,17 +78,16 @@ namespace CmccEdu
                 g.PixelOffsetMode = PixelOffsetMode.HighQuality;
                 g.Clear(Color.Transparent);
 
-                // 等比铺满。边距只留 2%：标题栏和托盘里的图标本身就小，
-                // 留白越多图形越显小（状态点画在图形外侧，不吃这个边距）
-                int margin = Math.Max(1, (int)Math.Round(size * 0.02));
-                int target = size - margin * 2;
-                double scale = Math.Min((double)target / ContentRect.Width, (double)target / ContentRect.Height);
-                int w = Math.Max(1, (int)Math.Round(ContentRect.Width * scale));
-                int h = Math.Max(1, (int)Math.Round(ContentRect.Height * scale));
+                // 不留边距：托盘格子只有 16px，留 1px 就等于少 14% 的显示面积。
+                // 图形本身是宽扁的（127:90），等比缩放已经占了大部分空间，再留白就更显小。
+                int target = size;
+                double scale = Math.Min((double)target / _content.Width, (double)target / _content.Height);
+                int w = Math.Max(1, (int)Math.Round(_content.Width * scale));
+                int h = Math.Max(1, (int)Math.Round(_content.Height * scale));
                 int x = (size - w) / 2;
                 int y = (size - h) / 2;
 
-                g.DrawImage(Source, new Rectangle(x, y, w, h), ContentRect, GraphicsUnit.Pixel);
+                g.DrawImage(Source, new Rectangle(x, y, w, h), _content, GraphicsUnit.Pixel);
 
                 if (dot.HasValue)
                 {

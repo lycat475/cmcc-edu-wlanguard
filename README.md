@@ -184,8 +184,7 @@
 | --- | --- |
 | `CMCC-EDU网络守护.exe` | 全部功能（面板 + 守护 + 认证），单文件 |
 | `config.json` | 配置（首次运行自动生成） |
-| `assets/wifi.ico` | 图标渲染源图 |
-| `assets/app.ico` | 多尺寸图标（exe / 快捷方式用） |
+| `assets/app.ico` | 图标源图：exe 嵌入图标、快捷方式、托盘/标题栏都从它渲染 |
 | `DESIGN.md` | 技术设计（架构、逆向过程、状态机、加密方案） |
 | `LICENSE` | MIT 许可 |
 | `docs/` | 截图 |
