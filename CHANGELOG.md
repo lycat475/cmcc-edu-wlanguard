@@ -4,6 +4,44 @@
 
 ---
 
+## v2.1.0 — 2026-10-21
+
+**界面整体重做：全部控件自绘，不再是系统默认样式。**
+
+**视觉**
+
+- 四块圆角卡片分区（状态 / 表单 / 日志 / 底部设置），去掉原来三条分割线
+- 主色 `#2563EB`，在线绿 `#059669`，警告橙 `#D97706`，错误红 `#DC2626`
+- 按钮三档层级：蓝实心（主操作）/ 白描边（次要）/ 白底红字（下线）
+- 标题栏用 DWM 着色成白色，和内容连成一片
+
+**新增自绘控件**（7 个文件，约 950 行）
+
+| 文件 | 作用 |
+| --- | --- |
+| `UiButton.cs` | 圆角按钮，悬停/按下/禁用三态 |
+| `UiCheckBox.cs` | 16px 圆角方框，选中蓝底白勾 |
+| `RoundedField.cs` | 输入框圆角外框，聚焦变柔和蓝边 |
+| `DropDownField.cs` | 下拉框，圆角 + 自绘箭头 + 自绘菜单 |
+| `LayeredMenu.cs` | 分层窗口菜单（per-pixel alpha） |
+| `DotLabel.cs` | 状态圆点 + 光晕，替代 `●` 字符 |
+| `ThinScrollBar.cs` | 8px 圆角细滚动条，替代 17px 系统滚动条 |
+
+**踩过的坑（都写进代码注释了）**
+
+- **圆角白边**：`RoundedField` 用 `Parent.BackColor` 铺底，父容器是窗体（白）而背景实际是卡片（浅灰），四个角出现白块。改为显式 `SurfaceColor`
+- **菜单圆角锯齿**：`Region` 裁剪不做抗锯齿，边缘是阶梯。改用分层窗口 `UpdateLayeredWindow`
+- **分层窗口不可见**：用 `Format32bppArgb` 时 `GetHbitmap` 丢 alpha，改成 `Format32bppPArgb`（预乘 alpha）
+- **`Control` 不能设 `Color.Transparent`**：需要 `SupportsTransparentBackColor` 样式位，否则构造时抛异常，面板启动即崩
+- **`Visible` 在窗体未显示时恒为 false**：改它不触发 `VisibleChanged`，外框收不到通知，导致空壳盖住按钮
+- **1px 边框发虚**：整数坐标上抗锯齿会摊成两个半透明像素，坐标要 +0.5
+- **`AutoSize = false` 会搞坏 `ContextMenuStrip` 布局**（已弃用该方案）
+
+**其它**
+
+- `ToolStrip` 方案的 `FlatMenuRenderer.cs` 删除（已无引用）
+
+---
 ## 文档整理 — 2026-10-21
 
 不是功能更新，只整理文档：

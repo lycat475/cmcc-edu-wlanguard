@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Text;
@@ -13,21 +14,35 @@ namespace CmccEdu
         private readonly EventWaitHandle _showEvent;
 
         // 配色
-        private static readonly Color CText  = Color.FromArgb(32, 32, 32);
-        private static readonly Color CMuted = Color.FromArgb(122, 122, 122);
-        private static readonly Color CLine  = Color.FromArgb(228, 228, 228);
-        private static readonly Color COk    = Color.FromArgb(10, 140, 70);
-        private static readonly Color CWarn  = Color.FromArgb(190, 90, 0);
-        private static readonly Color CBad   = Color.FromArgb(190, 40, 40);
-        private static readonly Color CLogBg = Color.FromArgb(247, 248, 250);
+        private static readonly Color CText  = Color.FromArgb(31, 35, 40);
+        private static readonly Color CMuted = Color.FromArgb(107, 114, 128);
+        private static readonly Color CLine  = Color.FromArgb(232, 235, 239);
+        private static readonly Color COk    = Color.FromArgb(5, 150, 105);
+        private static readonly Color CWarn  = Color.FromArgb(217, 119, 6);
+        private static readonly Color CBad   = Color.FromArgb(220, 38, 38);
+        private static readonly Color CLogBg = Color.FromArgb(255, 255, 255);
+        private static readonly Color CCard  = Color.FromArgb(243, 245, 248);
+        private static readonly Color CCardEdge = Color.FromArgb(232, 235, 239);
+
+        // 四块分区（对应：顶部控制 / 表单 / 日志 / 底部设置）
+        private static readonly Rectangle[] Cards = new Rectangle[]
+        {
+            new Rectangle(8,   6, 504, 208),
+            new Rectangle(8, 222, 504, 116),
+            new Rectangle(8, 346, 504, 232),
+            new Rectangle(8, 582, 504,  36)
+        };
 
         // 控件
-        private Label _lblState, _lblNet, _lblTime, _lblResult, _lblUser, _lblMode, _lblPass, _lblInterval, _lblLog;
-        private Button _btnToggle, _btnCheck, _btnLogout, _btnRefresh, _btnSendCode, _btnSave, _btnStaticLogin, _btnLog, _btnClearLog;
-        private CheckBox _chkStopGuard;
+        private DotLabel _lblState;
+        private Label _lblNet, _lblTime, _lblResult, _lblUser, _lblMode, _lblPass, _lblInterval, _lblLog;
+        private UiButton _btnToggle, _btnCheck, _btnLogout, _btnRefresh, _btnSendCode, _btnSave, _btnStaticLogin, _btnLog, _btnClearLog;
+        private UiCheckBox _chkStopGuard;
         private TextBox _txtUser, _txtPass, _txtLog;
-        private ComboBox _cmbMode, _cmbInterval, _cmbGuiMode;
-        private CheckBox _chkAutoLogin, _chkShowPwd, _chkAutoGuard, _chkAutoGui;
+        private RoundedField _fieldPass;   // 密码/验证码框的外框，需要跟着显隐
+        private ThinScrollBar _logScroll; // 日志框的自制滚动条
+        private DropDownField _cmbMode, _cmbInterval, _cmbGuiMode;
+        private UiCheckBox _chkAutoLogin, _chkShowPwd, _chkAutoGuard, _chkAutoGui;
         private NotifyIcon _tray;
         private System.Windows.Forms.Timer _uiTimer;
 
@@ -37,13 +52,9 @@ namespace CmccEdu
         private bool _suppressModeEvent;
         private bool _suppressAutoEvent;   // 初始化控件时不要触发"保存设置"
         private bool _loginBusy;
-        private bool _refreshBusy;
         private bool _reallyExit;
         private bool _quietStart;
         private Color _lastIconDot = Color.Empty;
-        private Color? _manualDot;
-        private string _manualText;
-        private DateTime _manualAt;
 
         public MainForm(EventWaitHandle showEvent)
         {
@@ -64,20 +75,24 @@ namespace CmccEdu
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
+            // 控件坐标是按 520x624 设计的，这里锁死客户区，
+            // 否则窗口默认尺寸会让右侧多出空白、卡片左右不对称。
+            ClientSize = new Size(520, 624);
             BackColor = Color.White;
             Font = new Font("微软雅黑", 9f);
             ForeColor = CText;
 
-            _lblState = new Label { Location = new Point(24, 14), Size = new Size(472, 34),
-                Font = new Font("微软雅黑", 15f, FontStyle.Bold), Text = "●  守护已停止", ForeColor = CMuted };
+            _lblState = new DotLabel { Location = new Point(24, 14), Size = new Size(472, 34),
+                Font = new Font("微软雅黑", 14f, FontStyle.Bold), Text = "守护已停止", ForeColor = CMuted,
+                DotSize = 11, DotGap = 10 };
             Controls.Add(_lblState);
 
-            _btnToggle    = MakeButton("开启守护", 24, 62, 148, 38);
-            _btnCheck     = MakeButton("cookies登录", 182, 62, 148, 38);
-            _btnLogout    = MakeButton("下线", 340, 62, 156, 32);
+            _btnToggle    = MakeButton("开启守护", 24, 62, 148, 38, UiButtonKind.Primary);
+            _btnCheck     = MakeButton("cookies登录", 182, 62, 148, 38, UiButtonKind.Secondary);
+            _btnLogout    = MakeButton("下线", 340, 62, 156, 32, UiButtonKind.Danger);
 
             // 下线时是否连带关闭守护：默认勾选（和旧行为一致，避免下线后几秒被登回去）
-            _chkStopGuard = new CheckBox
+            _chkStopGuard = new UiCheckBox
             {
                 Location = new Point(340, 97),
                 Size = new Size(160, 18),
@@ -88,13 +103,12 @@ namespace CmccEdu
             };
             Controls.Add(_chkStopGuard);
 
-            Controls.Add(MakeDivider(24, 112, 472));
 
-            _lblNet = new Label { Location = new Point(24, 124), Size = new Size(372, 24),
+            _lblNet = new Label { Location = new Point(24, 124), Size = new Size(356, 24),
                 Text = "网络状态：—", ForeColor = CMuted };
             Controls.Add(_lblNet);
 
-            _btnRefresh = MakeButton("更新", 408, 122, 88, 26);
+            _btnRefresh = MakeButton("更新cookies", 388, 122, 108, 26, UiButtonKind.Secondary);
             _btnRefresh.Click += OnRefreshClick;
 
             _lblTime = new Label { Location = new Point(24, 150), Size = new Size(472, 22),
@@ -105,71 +119,91 @@ namespace CmccEdu
                 Text = "最近结果：—", ForeColor = CMuted };
             Controls.Add(_lblResult);
 
-            Controls.Add(MakeDivider(24, 222, 472));
 
             _lblUser = MakeFieldLabel("账号", 24, 237);
             _txtUser = new TextBox { Location = new Point(84, 234), Size = new Size(200, 28) };
-            Controls.Add(_txtUser);
+            WrapField(_txtUser, 84, 234, 200, 30);
 
             _lblMode = MakeFieldLabel("方式", 300, 237, 44);
-            _cmbMode = new ComboBox { Location = new Point(348, 234), Size = new Size(148, 28), DropDownStyle = ComboBoxStyle.DropDownList };
-            _cmbMode.Items.AddRange(new object[] { "静态密码", "动态密码（短信）" });
+            _cmbMode = new DropDownField { Location = new Point(348, 234), Size = new Size(148, 28), SurfaceColor = CCard };
+            _cmbMode.AddRange(new object[] { "静态密码", "动态密码（短信）" });
             _cmbMode.SelectedIndexChanged += OnModeChanged;
             Controls.Add(_cmbMode);
 
             _lblPass = MakeFieldLabel("密码", 24, 275);
             _txtPass = new TextBox { Location = new Point(84, 272), Size = new Size(150, 28), UseSystemPasswordChar = true };
-            Controls.Add(_txtPass);
+            _fieldPass = WrapField(_txtPass, 84, 272, 150, 30);
 
-            _chkShowPwd = new CheckBox { Location = new Point(240, 274), Size = new Size(56, 24), Text = "显示" };
+            _chkShowPwd = new UiCheckBox { Location = new Point(240, 274), Size = new Size(56, 24), Text = "显示" };
             Controls.Add(_chkShowPwd);
             _chkShowPwd.CheckedChanged += (s, e) => _txtPass.UseSystemPasswordChar = !_chkShowPwd.Checked;
 
-            _btnStaticLogin = MakeButton("静态密码登录", 300, 271, 96, 28);
+            _btnStaticLogin = MakeButton("静态密码登录", 300, 271, 96, 28, UiButtonKind.Secondary);
             _btnStaticLogin.Visible = false;
             _btnStaticLogin.Click += OnStaticLoginClick;
 
-            _btnSendCode = MakeButton("发送验证码并登录", 84, 271, 150, 28);
+            _btnSendCode = MakeButton("发送验证码并登录", 84, 271, 150, 28, UiButtonKind.Primary);
             _btnSendCode.Click += OnSendCodeClick;
 
-            _btnSave = MakeButton("保存账号", 396, 271, 100, 28);
+            _btnSave = MakeButton("保存账号", 396, 271, 100, 28, UiButtonKind.Secondary);
             _btnSave.Click += OnSaveClick;
 
             _lblInterval = MakeFieldLabel("检测间隔", 24, 310, 80);
-            _cmbInterval = new ComboBox { Location = new Point(108, 307), Size = new Size(120, 28), DropDownStyle = ComboBoxStyle.DropDownList };
-            _cmbInterval.Items.AddRange(new object[] { "5 秒", "10 秒", "15 秒", "30 秒", "60 秒", "2 分钟", "5 分钟" });
+            _cmbInterval = new DropDownField { Location = new Point(108, 307), Size = new Size(120, 28), SurfaceColor = CCard };
+            _cmbInterval.AddRange(new object[] { "5 秒", "10 秒", "15 秒", "30 秒", "60 秒", "2 分钟", "5 分钟" });
             _cmbInterval.SelectedIndexChanged += OnIntervalChanged;
             Controls.Add(_cmbInterval);
 
-            _chkAutoLogin = new CheckBox { Location = new Point(300, 310), Size = new Size(172, 24), Text = "下次自动登录", Checked = true };
+            _chkAutoLogin = new UiCheckBox { Location = new Point(300, 310), Size = new Size(172, 24), Text = "下次自动登录", Checked = true };
             Controls.Add(_chkAutoLogin);
 
-            Controls.Add(MakeDivider(24, 346, 472));
 
             _lblLog = new Label { Location = new Point(24, 358), Size = new Size(180, 22), Text = "最近日志", ForeColor = CMuted };
             Controls.Add(_lblLog);
 
-            _btnLog      = MakeButton("打开日志", 312, 354, 84, 26);
+            _btnLog      = MakeButton("打开日志", 312, 354, 84, 26, UiButtonKind.Secondary);
             _btnLog.Font = new Font("微软雅黑", 8f);
             _btnLog.Click += OnOpenLogClick;
 
-            _btnClearLog = MakeButton("清空日志", 404, 354, 92, 26);
+            _btnClearLog = MakeButton("清空日志", 404, 354, 92, 26, UiButtonKind.Secondary);
             _btnClearLog.Font = new Font("微软雅黑", 8f);
             _btnClearLog.Click += OnClearLogClick;
 
             _txtLog = new TextBox
             {
                 Location = new Point(24, 384), Size = new Size(472, 190),
-                Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+                Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.None,
                 WordWrap = true, BorderStyle = BorderStyle.FixedSingle,
                 BackColor = CLogBg, ForeColor = CText, Font = new Font("微软雅黑", 9f)
             };
-            Controls.Add(_txtLog);
+            // 日志框也套一层圆角外框，去掉系统默认的 3D 凹陷感
+            var logField = new RoundedField
+            {
+                Location = new Point(24, 384),
+                Size = new Size(472, 190),
+                FillColor = Color.White,
+                SurfaceColor = CCard
+            };
+            _txtLog.BorderStyle = BorderStyle.None;
+            _txtLog.Location = new Point(8, 6);
+            _txtLog.Size = new Size(446, 178);   // 右边留 10px 给自制滚动条
+            logField.Controls.Add(_txtLog);
 
-            _chkAutoGuard = new CheckBox { Location = new Point(24, 586), Size = new Size(148, 26), Text = "开机启动守护" };
-            _chkAutoGui   = new CheckBox { Location = new Point(180, 586), Size = new Size(148, 26), Text = "开机启动面板" };
-            _cmbGuiMode   = new ComboBox { Location = new Point(340, 583), Size = new Size(116, 28), DropDownStyle = ComboBoxStyle.DropDownList };
-            _cmbGuiMode.Items.AddRange(new object[] { "托盘", "任务栏" });
+            // 自制细滚动条：原生那条 17px 宽、灰色，和圆角风格不搭
+            _logScroll = new ThinScrollBar(_txtLog)
+            {
+                Location = new Point(458, 6),
+                Size = new Size(8, 178),
+                BackColor = Color.White
+            };
+            logField.Controls.Add(_logScroll);
+
+            Controls.Add(logField);
+
+            _chkAutoGuard = new UiCheckBox { Location = new Point(24, 586), Size = new Size(148, 26), Text = "开机启动守护" };
+            _chkAutoGui   = new UiCheckBox { Location = new Point(180, 586), Size = new Size(148, 26), Text = "开机启动面板" };
+            _cmbGuiMode   = new DropDownField { Location = new Point(340, 586), Size = new Size(116, 26), SurfaceColor = CCard };
+            _cmbGuiMode.AddRange(new object[] { "托盘", "任务栏" });
             _cmbGuiMode.SelectedIndex = 0;
             Controls.Add(_chkAutoGuard);
             Controls.Add(_chkAutoGui);
@@ -188,9 +222,37 @@ namespace CmccEdu
             Shown += OnShown;
         }
 
-        private Button MakeButton(string text, int x, int y, int w, int h)
+        protected override void OnPaint(PaintEventArgs e)
         {
-            var b = new Button { Text = text, Location = new Point(x, y), Size = new Size(w, h) };
+            base.OnPaint(e);
+
+            // 画卡片背景。WinForms 的 Label 透明背景取的是窗体底色而不是卡片色，
+            // 所以卡片用浅灰、窗体用白，标签只需染成 CCard 就能和卡片融为一体。
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+            foreach (var r in Cards)
+            {
+                using (var path = UiButton.RoundedPath(new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1), 10))
+                using (var brush = new SolidBrush(CCard))
+                using (var pen = new Pen(CCardEdge, 1f))
+                {
+                    g.FillPath(brush, path);
+                    g.DrawPath(pen, path);
+                }
+            }
+        }
+
+        private UiButton MakeButton(string text, int x, int y, int w, int h, UiButtonKind kind = UiButtonKind.Secondary)
+        {
+            var b = new UiButton
+            {
+                Text = text,
+                Location = new Point(x, y),
+                Size = new Size(w, h),
+                Kind = kind,
+                Font = new Font("微软雅黑", h >= 34 ? 10f : 9f)
+            };
             Controls.Add(b);
             return b;
         }
@@ -198,6 +260,48 @@ namespace CmccEdu
         private static Control MakeDivider(int x, int y, int w)
         {
             return new Panel { Location = new Point(x, y), Size = new Size(w, 1), BackColor = CLine };
+        }
+
+        /// <summary>
+        /// 把输入控件塞进圆角外框里。外框负责画边框，控件本身去掉系统边框。
+        /// 内边距左右 9px，垂直居中。
+        /// </summary>
+        private RoundedField WrapField(Control inner, int x, int y, int w, int h, int padX = 9, int padY = 0)
+        {
+            Controls.Remove(inner);
+
+            var field = new RoundedField
+            {
+                Location = new Point(x, y),
+                Size = new Size(w, h),
+                FillColor = Color.White,
+                SurfaceColor = CCard
+            };
+
+            // BorderStyle / PreferredHeight 是 TextBox 才有的，Control 上没有
+            var asText = inner as TextBox;
+            if (asText != null) asText.BorderStyle = BorderStyle.None;
+            inner.BackColor = Color.White;
+
+            int innerH = asText != null ? asText.PreferredHeight : inner.Height;
+            if (innerH <= 0) innerH = inner.Height;
+            int top = padY > 0 ? padY : Math.Max(0, (h - innerH) / 2);
+            inner.Location = new Point(padX, top);
+            inner.Width = Math.Max(10, w - padX * 2);
+
+            field.Controls.Add(inner);
+
+            // 外框必须跟着内部控件一起显隐，否则隐藏的输入框会留下一个空壳，
+            // 把同一位置的按钮盖住（动态模式下「验证码」框会盖掉「发送验证码并登录」）。
+            inner.VisibleChanged += delegate { field.Visible = inner.Visible; };
+            field.Visible = inner.Visible;
+
+            // 焦点时边框变蓝
+            inner.GotFocus += delegate { field.SetFocused(true); };
+            inner.LostFocus += delegate { field.SetFocused(false); };
+
+            Controls.Add(field);
+            return field;
         }
 
         private Label MakeFieldLabel(string text, int x, int y, int w = 52)
@@ -209,9 +313,31 @@ namespace CmccEdu
 
         // ---------------------------------------------------------------- 启动
 
+
+
+        /// <summary>
+        /// 把标签和复选框的底色染成卡片色。
+        /// WinForms 的 Label 透明背景取的是窗体底色（白），直接放在灰卡片上会露出白块。
+        /// </summary>
+        private void PaintCardBackcolors()
+        {
+            foreach (Control ctl in Controls)
+            {
+                if (ctl is Label || ctl is CheckBox) ctl.BackColor = CCard;
+            }
+        }
+
         private void OnShown(object sender, EventArgs e)
         {
             AppLog.WriteErrorLog("面板已显示");
+
+            // 控件都建好了，统一把标签/复选框染成卡片色
+            PaintCardBackcolors();
+
+            // 标题栏也刷成白色，和内容连成一片
+            TitleBarTheme.Apply(Handle);
+
+
 
             try { InitTray(); }
             catch (Exception ex) { AppLog.WriteErrorLog("创建托盘失败: " + ex.Message); }
@@ -257,28 +383,49 @@ namespace CmccEdu
                 Visible = true
             };
 
-            var menu = new ContextMenuStrip();
-            menu.Items.Add("打开面板", null, (s, e) => ShowPanel());
+            // 托盘菜单也用分层窗口菜单：圆角真正抗锯齿，和下拉菜单一致
 
-            var toggle = menu.Items.Add("关闭守护", null, (s, e) =>
+            var openEntry = new MenuEntry { Text = "打开面板", Click = delegate { ShowPanel(); } };
+            _menuToggle = new MenuEntry
             {
-                if (Guard.IsRunning()) Guard.Stop(); else Guard.Start();
-                RefreshUi();
-            });
-            _menuToggle = toggle;
+                Text = Guard.IsRunning() ? "关闭守护" : "开启守护",
+                Click = delegate
+                {
+                    if (Guard.IsRunning()) Guard.Stop(); else Guard.Start();
+                    RefreshUi();
+                }
+            };
+            var shortcutEntry = new MenuEntry { Text = "创建桌面快捷方式", Click = delegate { CreateShortcut(); } };
+            var exitEntry = new MenuEntry { Text = "退出面板", Click = delegate { OnTrayExit(); } };
 
-            menu.Items.Add("创建桌面快捷方式", null, (s, e) => CreateShortcut());
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("退出面板", null, (s, e) => OnTrayExit());
-            _tray.ContextMenuStrip = menu;
-
+            _menuEntries.Add(openEntry);
+            _menuEntries.Add(_menuToggle);
+            _menuEntries.Add(shortcutEntry);
+            _menuEntries.Add(MenuEntry.Sep());
+            _menuEntries.Add(exitEntry);
             _tray.MouseDoubleClick += (s, e) => ShowPanel();
-            _tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowPanel(); };
+            _tray.MouseClick += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left) ShowPanel();
+                else if (e.Button == MouseButtons.Right) ShowTrayMenu();
+            };
 
             AppLog.WriteErrorLog("托盘图标已创建  Visible=True");
         }
 
-        private ToolStripItem _menuToggle;
+        private readonly List<MenuEntry> _menuEntries = new List<MenuEntry>();
+        private MenuEntry _menuToggle;
+
+        /// <summary>右键托盘图标时弹出菜单。</summary>
+        private void ShowTrayMenu()
+        {
+            try
+            {
+                var menu = new LayeredMenu(_menuEntries);
+                menu.ShowAt(Cursor.Position);
+            }
+            catch (Exception ex) { AppLog.WriteErrorLog("弹出托盘菜单失败: " + ex.Message); }
+        }
 
         private void ShowPanel()
         {
@@ -392,6 +539,9 @@ namespace CmccEdu
         {
             bool dynamic = _loginMode == "dynamic";
             _txtPass.Visible = !dynamic;
+            // 窗体还没显示时 Visible 恒为 false，改它不触发 VisibleChanged，
+            // 所以外框必须显式同步，否则会留下空壳盖住「发送验证码并登录」。
+            if (_fieldPass != null) _fieldPass.Visible = !dynamic;
             _chkShowPwd.Visible = !dynamic;
             _lblPass.Text = dynamic ? "验证码" : "密码";
             _btnSendCode.Visible = dynamic;
@@ -644,40 +794,14 @@ namespace CmccEdu
             _btnStaticLogin.Enabled = enabled;
         }
 
+        /// <summary>
+        /// 「更新cookies」：发短信拿一批新的免密 cookie。
+        /// 服务端每完成一次完整登录就会重新下发 4 个 AUTOAUTH_*，有效期是「此刻 + 90 天」，
+        /// 登录成功后 LoginRunner 会自动把它们存回配置。
+        /// </summary>
         private void OnRefreshClick(object sender, EventArgs e)
         {
-            if (_refreshBusy) return;
-            _refreshBusy = true;
-            _btnRefresh.Enabled = false;
-            _btnRefresh.Text = "检测中…";
-
-            // 探测最长要 3 秒，放后台跑，别冻住界面
-            var thread = new System.Threading.Thread(() =>
-            {
-                bool online = Network.IsOnline(3);
-                try
-                {
-                    BeginInvoke(new Action(() =>
-                    {
-                        _manualDot = online ? COk : CWarn;
-                        _manualText = online ? "已联网" : "未联网";
-                        _manualAt = DateTime.Now;
-                        _btnRefresh.Text = "更新";
-                        _btnRefresh.Enabled = true;
-                        _refreshBusy = false;
-                        RefreshUi();
-                        AppLog.WriteErrorLog("手动更新状态：" + _manualText);
-                    }));
-                }
-                catch (Exception ex)
-                {
-                    // 面板已经关了
-                    _refreshBusy = false;
-                    AppLog.WriteErrorLog("回传检测结果失败: " + ex.Message);
-                }
-            });
-            thread.IsBackground = true;
-            thread.Start();
+            OnSendCodeClick(sender, e);
         }
 
         private void OnLogoutClick(object sender, EventArgs e)
@@ -781,7 +905,8 @@ namespace CmccEdu
             bool running = Guard.IsRunning();
             var st = Status.Read();
 
-            _lblState.Text = running ? "●  守护运行中" : "●  守护已停止";
+            _lblState.Text = running ? "守护运行中" : "守护已停止";
+            _lblState.DotColor = running ? COk : Color.FromArgb(156, 163, 175);
             _lblState.ForeColor = running ? COk : CMuted;
             _btnToggle.Text = running ? "关闭守护" : "开启守护";
             if (_menuToggle != null) _menuToggle.Text = running ? "关闭守护" : "开启守护";
@@ -792,17 +917,11 @@ namespace CmccEdu
             // 手动检测结果：状态文件没给结论时用它兜底
             if (st != null && !string.IsNullOrEmpty(st.State) && st.State != "error")
             {
-                _lblTime.Text = "上次检查：" + st.Time;
+                _lblTime.Text = "上次检查：" + st.Time + CookieHint();
                 _lblResult.Text = "最近结果：" + st.Message;
                 ApplyStateText(st.State);
             }
-            else if (_manualAt != default(DateTime) && (DateTime.Now - _manualAt).TotalMinutes <= 2)
-            {
-                _lblNet.Text = "网络状态：" + _manualText + "（手动检测 " + _manualAt.ToString("HH:mm:ss") + "）";
-                _lblNet.ForeColor = _manualDot.Value;
-                _lblTime.Text = "上次检查：" + _manualAt.ToString("HH:mm:ss") + "（手动）";
-                _lblResult.Text = running ? "最近结果：--" : "最近结果：守护未运行，以上为手动检测结果";
-            }
+
             else
             {
                 _lblNet.Text = "网络状态：—";
@@ -868,7 +987,6 @@ namespace CmccEdu
                 case "error":   _lblNet.Text = "网络状态：异常"; _lblNet.ForeColor = CBad; break;
                 default:        _lblNet.Text = "网络状态：未知"; _lblNet.ForeColor = CMuted; break;
             }
-            _lblNet.Text += CookieHint();
         }
 
         private void RefreshLogPanel()
