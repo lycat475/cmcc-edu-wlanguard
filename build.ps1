@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $srcDir = Join-Path $root 'src'
 $distDir = Join-Path $root 'dist'
-$outExe = Join-Path $distDir 'CMCC-EDU网络守护.exe'
+$outExe = Join-Path $distDir 'cmcc-edu-guard.exe'
 
 $cscPath = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $cscPath)) { throw "找不到 csc.exe: $cscPath" }
