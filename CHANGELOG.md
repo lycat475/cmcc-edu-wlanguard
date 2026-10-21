@@ -44,6 +44,14 @@
 - `portal` 留空 + 已联网：清晰报错，不误认地址
 - 解析逻辑：含 `wlanuserip` 的地址能正确取出 host 与 `wlanacname`；`www.baidu.com` 与不含该参数的地址一律拒收
 
+**校验**
+
+```
+文件: CMCC-EDU网络守护_v2.0.2.zip
+大小: 127.1 KB
+SHA256: FC91F61CA03C2144ECEE8A0A4A1923B4DF7B4C7894364909BBB9B85CCDFB56A5
+```
+
 ---
 ## v2.0.1 — 2026-10-21
 
