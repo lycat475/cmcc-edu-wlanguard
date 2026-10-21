@@ -62,7 +62,7 @@ namespace CmccEdu
                 }
                 finally
                 {
-                    try { File.Delete(xmlPath); } catch { }
+                    SafeDelete.File_(xmlPath);
                 }
             }
             catch (Exception ex)

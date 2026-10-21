@@ -93,9 +93,9 @@ namespace CmccEdu
 
             if (File.Exists(AppEnv.ConfigPath))
             {
-                try { File.Copy(AppEnv.ConfigPath, AppEnv.ConfigPath + ".bak", true); } catch { }
+                SafeDelete.Try(delegate { File.Copy(AppEnv.ConfigPath, AppEnv.ConfigPath + ".bak", true); }, "备份配置", "CFG");
                 try { File.Replace(tmp, AppEnv.ConfigPath, null); return; }
-                catch { try { File.Delete(AppEnv.ConfigPath); } catch { } }
+                catch { SafeDelete.File_(AppEnv.ConfigPath); }
             }
             File.Move(tmp, AppEnv.ConfigPath);
             InvalidateCache();

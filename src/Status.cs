@@ -33,7 +33,7 @@ namespace CmccEdu
                 if (File.Exists(AppEnv.StatusPath))
                 {
                     try { File.Replace(tmp, AppEnv.StatusPath, null); return; }
-                    catch { try { File.Delete(AppEnv.StatusPath); } catch { } }
+                    catch { SafeDelete.File_(AppEnv.StatusPath); }
                 }
                 File.Move(tmp, AppEnv.StatusPath);
             }
@@ -74,7 +74,7 @@ namespace CmccEdu
 
         public static void Clear()
         {
-            try { File.Delete(AppEnv.StatusPath); } catch { }
+            SafeDelete.File_(AppEnv.StatusPath);
         }
 
         private static string ToStr(System.Collections.Generic.Dictionary<string, object> d, string k)

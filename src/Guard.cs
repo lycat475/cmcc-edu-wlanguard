@@ -25,6 +25,16 @@ namespace CmccEdu
         private static bool _lastRunning;
         private static DateTime _lastRunningAt = DateTime.MinValue;
 
+        /// <summary>
+        /// 让「守护是否在运行」的缓存立刻失效。
+        /// IsRunning 有 1.5 秒缓存（避免面板每 2 秒枚举一次进程），
+        /// 但用户刚点了开启/关闭，界面必须立刻反映，不能等缓存过期。
+        /// </summary>
+        public static void InvalidateRunningCache()
+        {
+            _lastRunningAt = DateTime.MinValue;
+        }
+
         /// <summary>守护是否在运行。先看 pid 文件，再按进程兜底（防 pid 文件丢失留下孤儿）。</summary>
         public static bool IsRunning()
         {
@@ -89,7 +99,7 @@ namespace CmccEdu
             }
 
             Thread.Sleep(250);
-            try { File.Delete(AppEnv.PidPath); } catch { }
+            SafeDelete.File_(AppEnv.PidPath);
             Status.Clear();
         }
 
@@ -263,7 +273,7 @@ namespace CmccEdu
                 }
                 finally
                 {
-                    try { File.Delete(AppEnv.PidPath); } catch { }
+                    SafeDelete.File_(AppEnv.PidPath);
                     Status.Clear();
                     AppLog.Write("守护进程已停止", "SYS");
                 }

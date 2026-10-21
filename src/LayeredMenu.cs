@@ -300,10 +300,48 @@ namespace CmccEdu
             if (entry.Click != null) entry.Click();
         }
 
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+
+            if (e.KeyCode == Keys.Escape) { Close(); return; }
+
+            if (e.KeyCode == Keys.Down || e.KeyCode == Keys.Up)
+            {
+                int dir = e.KeyCode == Keys.Down ? 1 : -1;
+                int idx = _hover;
+                do
+                {
+                    idx += dir;
+                    if (idx < 0) idx = _entries.Count - 1;
+                    if (idx >= _entries.Count) idx = 0;
+                }
+                while (_entries[idx].IsSeparator);
+
+                _hover = idx;
+                Render();
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.Enter && _hover >= 0 && _hover < _entries.Count)
+            {
+                var entry = _entries[_hover];
+                Close();
+                if (entry.Click != null) entry.Click();
+                e.Handled = true;
+            }
+        }
+
         protected override void OnDeactivate(EventArgs e)
         {
             base.OnDeactivate(e);
             Close();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            // 菜单是每次打开都新建的，字体必须跟着释放，否则每开一次漏一个 GDI 句柄
+            if (disposing) _font.Dispose();
+            base.Dispose(disposing);
         }
 
         protected override bool ShowWithoutActivation
