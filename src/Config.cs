@@ -155,8 +155,11 @@ namespace CmccEdu
 
         public void ApplyDefaults()
         {
-            SetDefault("portal", "http://192.0.2.1");
-            SetDefault("acName", "0000.0000.000.00");
+            // portal / acName 不再硬编码：程序会从 AC 的重定向里自动识别，
+            // 识别结果写进启动日志（[NET] 自动识别 Portal 地址: ...）。
+            // 需要固定值的话，自己填到 config.json 里即可。
+            SetDefault("portal", "");
+            SetDefault("acName", "");
             SetDefault("ssid", "CMCC-EDU");
             SetDefault("triggerUrl", "http://www.baidu.com/");
             SetDefault("loginMode", "dynamic");

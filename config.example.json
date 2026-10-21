@@ -1,7 +1,7 @@
 {
     "ssid": "CMCC-EDU",
-    "portal": "http://192.0.2.1",
-    "acName": "0000.0000.000.00",
+    "portal": "",
+    "acName": "",
     "triggerUrl": "http://www.baidu.com/",
     "rememberCookie": "",
     "username": "",

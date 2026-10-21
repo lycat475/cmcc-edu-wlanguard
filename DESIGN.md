@@ -152,8 +152,8 @@ cookie 免密登录（GET `authServlet`）不会产生新的 Set-Cookie，所以
 
 ```json
 {
-  "portal": "http://192.0.2.1",
-  "acName": "0000.0000.000.00",
+  "portal": "",
+  "acName": "",
   "ssid": "CMCC-EDU",
   "loginMode": "dynamic",
   "interval": 60,
@@ -166,6 +166,7 @@ cookie 免密登录（GET `authServlet`）不会产生新的 Set-Cookie，所以
 
 - 用「字典读入 → 原样回写」，不认识的键不会被丢弃
 - `autoCookiesExpire` 是明文（只是到期时间，不是凭据），登录成功后自动写入，面板据此显示剩余天数
+- `portal` / `acName` **默认为空**：未认证时 AC 的 302 地址里天然带 `wlanuserip` 和 `wlanacname`，程序据此自动识别并写进日志；只有识别失败才需要手填
 - 凭据一律 `dpapi:` 前缀（Windows DPAPI，绑定当前用户）
 - 首次运行没有 `config.json` 时自动生成默认配置
 
@@ -217,7 +218,7 @@ package.ps1      发版打包（维护者本地工具，不随仓库发布）
 
 ### 1.2 一个容易踩的坑
 
-直接打开 `http://192.0.2.1/?wlanuserip=...&wlanacname=...&ssid=CMCC-EDU` **不能认证**。
+直接打开 `http://<Portal地址>/?wlanuserip=...&wlanacname=...&ssid=CMCC-EDU` **不能认证**。
 
 这个地址只是外层 frameset，真正的登录页在内层 frame 里。所以程序必须**先触发 AC 的重定向**，或者手动构造带 `wlanuserip` / `wlanacname` 的地址让服务端返回 frameset，然后跟进 `mainFrame`。
 

@@ -120,8 +120,8 @@
 | 字段 | 说明 |
 | --- | --- |
 | `ssid` | 目标 Wi-Fi 名，默认 `CMCC-EDU` |
-| `portal` | Portal 地址，兜底值（实际会从重定向里自动发现） |
-| `acName` | 接入控制器名，换校区可能要改 |
+| `portal` | Portal 地址，**可留空**：留空时程序从 AC 的重定向里自动识别 |
+| `acName` | 接入控制器名，**可留空**：留空时从重定向参数 `wlanacname` 自动识别 |
 | `usernameEnc` | 手机号，DPAPI 加密 |
 | `passwordEnc` | 静态密码，DPAPI 加密（动态模式为空） |
 | `loginMode` | `static` 或 `dynamic`（默认 `dynamic`） |
@@ -160,7 +160,7 @@
 
 **能用的前提**：
 
-- Portal 是江苏移动这一套（`192.0.2.1`，`style/university/` 皮肤）
+- Portal 使用移动校园网的 `style/university/` 皮肤（具体地址由程序从认证重定向里自动识别，不写死）
 - 你的账号开通了校园 WLAN 套餐
 
 **大概率不能用**：

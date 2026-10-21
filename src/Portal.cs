@@ -44,9 +44,9 @@ namespace CmccEdu
     internal sealed class Portal : IDisposable
     {
         private readonly CookieContainer _cookies = new CookieContainer();
-        private readonly string _portalBase;
+        private string _portalBase;   // 空值时从重定向里自动发现（见 EnsurePortalBase）
         private readonly string _ssid;
-        private readonly string _acName;
+        private string _acName;
         private string _userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) CmccEduGuard/2.0";
 
         public Portal(string portalBase, string ssid, string acName)
@@ -54,6 +54,29 @@ namespace CmccEdu
             _portalBase = (portalBase ?? "").TrimEnd('/');
             _ssid = ssid;
             _acName = acName;
+        }
+
+        /// <summary>
+        /// config 里没填 portal 时，从实际访问到的地址推断出 Portal 根地址。
+        /// 认证流程本来就会跟着 AC 的 302 走，所以地址是现成的，不必硬编码。
+        /// </summary>
+        private void EnsurePortalBase(string url)
+        {
+            if (!string.IsNullOrEmpty(_portalBase)) return;
+            if (string.IsNullOrEmpty(url)) return;
+
+            // 只认「认证页」的地址。已联网时请求百度也会成功，但那不是 Portal，
+            // 认错了会把后续请求全打到百度上去（实测踩过）。
+            if (url.IndexOf("wlanuserip=", StringComparison.OrdinalIgnoreCase) < 0) return;
+
+            try
+            {
+                var u = new Uri(url);
+                string host = u.Scheme + "://" + u.Authority;
+                _portalBase = host.TrimEnd('/');
+                AppLog.Write("自动识别 Portal 地址: " + _portalBase + "（来自 " + u.AbsolutePath + "）", "NET");
+            }
+            catch { /* 不是合法 URL 就继续用空值，后面会明确报错 */ }
         }
 
         public CookieContainer Cookies { get { return _cookies; } }
@@ -229,6 +252,34 @@ namespace CmccEdu
                 return result;
             }
 
+            // 配置里没填 portal 或 acName 时，先空跑一次请求：
+            // 未认证状态下 AC 会 302 到认证页，地址里天然带着 wlanuserip 和 wlanacname。
+            if (string.IsNullOrEmpty(_portalBase) || string.IsNullOrEmpty(_acName))
+            {
+                string trig = string.IsNullOrWhiteSpace(s.TriggerUrl) ? "http://www.baidu.com/" : s.TriggerUrl;
+                string trigFinal;
+                GetText(trig, out trigFinal);
+
+                EnsurePortalBase(trigFinal);
+
+                if (string.IsNullOrEmpty(_acName))
+                {
+                    var ma = Regex.Match(trigFinal ?? "", "wlanacname=([^&]+)");
+                    if (ma.Success)
+                    {
+                        _acName = Uri.UnescapeDataString(ma.Groups[1].Value);
+                        AppLog.Write("自动识别 AC 名: " + _acName, "NET");
+                    }
+                }
+
+                if (string.IsNullOrEmpty(_portalBase))
+                {
+                    result.Kind = "no-portal";
+                    result.Message = "没能识别 Portal 地址，请在配置里填写 portal";
+                    return result;
+                }
+            }
+
             string baseUrl = _portalBase;
             var uri = new Uri(baseUrl);
             foreach (var kv in pairs)
@@ -287,6 +338,7 @@ namespace CmccEdu
         {
             var sess = OpenCookieSession(s);
             if (!sess.Ok) return LoginResult.Fail(sess.Kind, sess.Message);
+            EnsurePortalBase(sess.Landing);
 
             // 服务端认 cookie 时主框架直接是 authServlet；返回 index.jsp 说明没认
             if (sess.FrameRel.IndexOf("index.jsp", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -348,6 +400,11 @@ namespace CmccEdu
             if (string.IsNullOrEmpty(frameRel))
             {
                 if (Network.IsOnline()) return LoginResult.Success("已联网，无需认证");
+
+                // 配置里没填 portal 时，从刚才重定向到的地址推断
+                EnsurePortalBase(finalUrl);
+                if (string.IsNullOrEmpty(_portalBase))
+                    return LoginResult.Fail("http", "没能识别 Portal 地址，请在配置里填写 portal");
 
                 string ip = Network.GetSsidAdapterIp(_ssid) ?? Network.GetDefaultRouteIp();
                 if (string.IsNullOrEmpty(ip)) return LoginResult.Fail("no-ip", "拿不到本机 IPv4 地址");
