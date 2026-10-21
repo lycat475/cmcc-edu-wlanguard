@@ -89,6 +89,7 @@ namespace CmccEdu
         {
             if (disposing)
             {
+                // 退出阶段：销毁失败也无所谓，进程马上就结束了，没必要记日志
                 if (_tray != null) { try { _tray.Visible = false; _tray.Dispose(); } catch { } }
                 if (_uiTimer != null) { try { _uiTimer.Dispose(); } catch { } }
                 IconFactory.ReleaseAll();   // 释放缓存里的 HICON

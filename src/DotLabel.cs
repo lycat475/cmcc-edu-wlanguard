@@ -54,16 +54,16 @@ namespace CmccEdu
             int cy = Height / 2;
             float d = DotSize;
 
-            // 外圈光晕：同色 20% 透明度，比纯圆点更有"活"的感觉
+            // 外圈光晕：同色 15% 透明度，比纯圆点更有"活"的感觉
+            // 光晕直径不能太大：左边界就是控件边界，溢出来会被裁掉一块（实测过）。
+            float hd = d + 4f;
+            float dotX = (hd - d) / 2f;   // 圆点在光晕里居中，不碰边界
             using (var halo = new SolidBrush(Color.FromArgb(38, dot)))
-            {
-                float hd = d + 8f;
-                g.FillEllipse(halo, (d - hd) / 2f, cy - hd / 2f, hd, hd);
-            }
+                g.FillEllipse(halo, 0f, cy - hd / 2f, hd, hd);
 
             // 实心圆点
             using (var brush = new SolidBrush(dot))
-                g.FillEllipse(brush, 0f, cy - d / 2f, d, d);
+                g.FillEllipse(brush, dotX, cy - d / 2f, d, d);
 
             // 文字
             int textWidth = Math.Max(0, Width - TextLeft);

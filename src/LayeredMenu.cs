@@ -55,6 +55,9 @@ namespace CmccEdu
         private static extern IntPtr GetDC(IntPtr hWnd);
 
         [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
         private static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
 
         private const int RowHeight = 30;
@@ -73,6 +76,8 @@ namespace CmccEdu
         private readonly int _width;
         private readonly int _height;
         private int _hover = -1;
+        private System.Windows.Forms.Timer _closeWatch;
+        private bool _armed;   // 见过一次鼠标松开后才允许因点外部而关闭
 
         public LayeredMenu(IEnumerable<MenuEntry> entries)
         {
@@ -134,6 +139,24 @@ namespace CmccEdu
             Location = new Point(x, y);
             Show();
             Render();
+
+            // 托盘右键弹菜单时，本进程可能没拿到前台权限：窗口显示出来但没被激活，
+            // 点别处不会触发 Deactivate，菜单会一直挂着。这里主动抢一次焦点兜底。
+            try { Activate(); SetForegroundWindow(Handle); }
+            catch (Exception ex) { AppLog.Write("菜单抢焦点失败：" + ex.Message, "UI"); }
+
+            _closeWatch = new System.Windows.Forms.Timer { Interval = 80 };
+            _closeWatch.Tick += delegate
+            {
+                // 打开菜单那一下鼠标还按着（下拉框是 MouseDown 弹出的），
+                // 此时光标在菜单外会被当成“点了别处”而误关。
+                // 所以必须先见到一次鼠标松开，才开始监听外部点击。
+                if (Control.MouseButtons == MouseButtons.None) { _armed = true; return; }
+                if (!_armed) return;
+                if (Bounds.Contains(Cursor.Position)) return;
+                Close();
+            };
+            _closeWatch.Start();
         }
 
         private void Render()
@@ -308,13 +331,20 @@ namespace CmccEdu
 
             if (e.KeyCode == Keys.Down || e.KeyCode == Keys.Up)
             {
+                // 全是分隔符时没有可选项，直接忽略，否则下面的循环会转不出来
+                bool hasItem = false;
+                foreach (var it in _entries) { if (!it.IsSeparator) { hasItem = true; break; } }
+                if (!hasItem) return;
+
                 int dir = e.KeyCode == Keys.Down ? 1 : -1;
                 int idx = _hover;
+                int guard = 0;   // 兜底：不管数据多奇怪，最多绕两圈就放弃
                 do
                 {
                     idx += dir;
                     if (idx < 0) idx = _entries.Count - 1;
                     if (idx >= _entries.Count) idx = 0;
+                    if (++guard > _entries.Count * 2) return;
                 }
                 while (_entries[idx].IsSeparator);
 
@@ -340,7 +370,11 @@ namespace CmccEdu
         protected override void Dispose(bool disposing)
         {
             // 菜单是每次打开都新建的，字体必须跟着释放，否则每开一次漏一个 GDI 句柄
-            if (disposing) _font.Dispose();
+            if (disposing)
+            {
+                if (_closeWatch != null) { _closeWatch.Stop(); _closeWatch.Dispose(); _closeWatch = null; }
+                _font.Dispose();
+            }
             base.Dispose(disposing);
         }
 
