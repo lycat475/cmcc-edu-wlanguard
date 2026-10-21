@@ -32,3 +32,4 @@ run-hidden.vbs
 
 # 发版工具，只是维护者本地用
 package.ps1
+release.ps1
