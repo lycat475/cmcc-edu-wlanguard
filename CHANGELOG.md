@@ -29,6 +29,14 @@ VERSION 文件 → %TEMP%\cmcc-gen\AppVersion.g.cs → AppInfo.Version → 界�
 - 两行右对齐时长短短不同，左边缘参差；改成居中对齐后才整齐
 - `PaintCardBackcolors()` 会把所有 Label 刷成卡片灰，页脚在卡片外面，需要显式跳过，否则多出一个灰块
 
+**校验**
+
+```
+文件: CMCC-EDU网络守护_v2.1.4.zip
+大小: 130.9 KB
+SHA256: 71CBCA5A284F9640348DEA63CFE373D7DA016150EC2A2447BAF2416505EA4D0E
+```
+
 ---
 ## v2.1.3 — 2026-10-21
 
