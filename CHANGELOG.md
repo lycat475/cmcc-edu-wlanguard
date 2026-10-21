@@ -38,6 +38,14 @@ MainForm.Actions  桌面快捷方式目标
 - 进程命令行确认为 `cmcc-edu-guard.exe -loop`
 - GitHub Actions 用 `dist/*.exe` 通配，不受改名影响
 
+**校验**
+
+```
+文件: CMCC-EDU网络守护_v2.1.5.zip
+大小: 130.8 KB
+SHA256: C51DB372D3D6AB9504F1849A59BBA0C0A8F0978F7ADC6EDAD367F423C8278200
+```
+
 ---
 ## v2.1.4 — 2026-10-21
 
