@@ -42,9 +42,9 @@
 | --- | --- |
 | **静态密码登录** | 填一次密码，之后完全自动 |
 | **动态密码登录** | 每次认证时触发短信，输 6 位验证码 |
-| **Cookie 免密** | 勾选过「自动登录」后，认证只需一个 GET，无人值守 |
+| **Cookie 免密** | 勾选过「自动登录」后，认证只需一个 GET，无人值守；登录一次自动续期 90 天 |
 | **断网守护** | 探测到断网自动恢复，网络事件唤醒 + 轮询兜底 |
-| **下线** | 等价于登录页的下线按钮；会先自动停止守护，避免下线后又被登回去 |
+| **下线** | 等价于登录页的下线按钮；可勾选「同时关闭守护」，避免下线后几秒又被登回去 |
 | **开机自启** | 守护和面板两个独立任务，面板可选托盘或任务栏 |
 | **托盘常驻** | 关闭窗口收进托盘，守护继续跑；再双击桌面图标会把面板叫回来 |
 
@@ -78,7 +78,20 @@
 
 ### 4. 想要真正免密
 
-用动态密码成功登录一次（登录时会自动勾选「自动登录」），然后把服务端下发的 4 个 `AUTOAUTH_*` cookie 填进 `config.json` 的 `autoCookies`：
+**不需要手动操作。** 用动态密码成功登录一次（登录时会自动勾选「自动登录」），程序会把服务端下发的 4 个 `AUTOAUTH_*` cookie **自动加密保存**进 `config.json`，同时把到期日记在 `autoCookiesExpire`。
+
+这批 cookie 的有效期是「登录时刻 + 90 天」。面板的网络状态后面会显示剩余天数：
+
+```
+网络状态：已联网    ·  cookie 至 2027-01-19（剩 89 天）
+```
+
+偶尔用短信登录一次，到期日就会自动往后滚 90 天，不需要再做任何手工操作。
+
+<details>
+<summary>应急：自动保存失效时怎么手动填入（一般用不到）</summary>
+
+手动把服务端下发的 4 个 `AUTOAUTH_*` cookie 填进 `config.json` 的 `autoCookies`：
 
 ```json
 "autoCookies": "AUTOAUTH_USERNAME_UNIVERSITY=...; AUTOAUTH_VALPERIOD_UNIVERSITY=...; AUTOAUTH_BOOKTIME_UNIVERSITY=...; AUTOAUTH_APPLYID_UNIVERSITY=..."
@@ -94,7 +107,9 @@
 
 再登录一次，`auth_headers.log` 里就是完整值了。**取完记得删掉这一行**。
 
-机制说明见 [DESIGN.md 第 0.3 节](DESIGN.md)。
+</details>
+
+机制说明见 [DESIGN.md 第 0.5 节](DESIGN.md)。
 
 ---
 
@@ -110,11 +125,12 @@
 | `usernameEnc` | 手机号，DPAPI 加密 |
 | `passwordEnc` | 静态密码，DPAPI 加密（动态模式为空） |
 | `loginMode` | `static` 或 `dynamic`（默认 `dynamic`） |
-| `autoCookiesEnc` | 4 个 `AUTOAUTH_*` cookie，DPAPI 加密 |
+| `autoCookiesEnc` | 4 个 `AUTOAUTH_*` cookie，DPAPI 加密（登录成功后自动更新） |
+| `autoCookiesExpire` | 上述 cookie 的到期时间，登录成功后自动写入，面板据此显示剩余天数 |
 | `autoload` | `checked` 续期自动登录 / `test` 不续期 |
 | `interval` | 探测间隔（秒） |
 | `guiStartMode` | `tray` 或 `taskbar` |
-| `dumpCookies` | 可选调试开关：`true` 时 `auth_headers.log` 写完整 cookie（默认关闭） |
+| `dumpCookies` | 可选调试开关：`true` 时 `auth_headers.log` 写完整 cookie（默认关闭；正常使用不需要） |
 
 **关于凭据加密**：手机号、密码、自动登录 cookie 都用 Windows DPAPI 加密后存储，文件里只有 `dpapi:AQAAANCMnd8...` 这样的密文。
 
@@ -212,6 +228,15 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 **Q：收不到短信验证码**
 Portal 对发码有 10 分钟冷却，10 分钟内重复点不会发新码。
+
+**Q：免密 cookie 有效期多久，会自己续吗**
+服务端给的有效期是**登录时刻 + 90 天**。每次用短信或密码**完整登录**，都会重新下发一批 cookie，到期日自动往后滚 90 天，程序会把新 cookie 存进配置。cookie 免密登录（只是 GET 一下）**不会**延长有效期。
+
+**Q：面板上「cookie 至 2026-xx-xx」是什么意思**
+就是当前这批免密 cookie 的到期日。显示「已过期」时，说明免密失效了，点「发送验证码并登录」重新登录一次即可，新的 cookie 会自动保存。
+
+**Q：下线后网络又自己连上了**
+下线按钮下方有个「同时关闭守护」的勾选项。不勾的话下线的瞬间守护还在跑，几秒内就会用 cookie 把你登回去。想彻底下线就勾上它。
 
 **Q：换电脑/换校区还能用吗**
 认证页地址和 AC 名会自动从重定向里发现，`acName` 只是兜底。账号密码需要重新填。

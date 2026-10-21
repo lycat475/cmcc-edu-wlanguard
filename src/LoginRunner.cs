@@ -44,6 +44,7 @@ namespace CmccEdu
                 // 静态密码可以全自动
                 var pr = portal.Login(s, "password", null);
                 pr.Mode = "static";
+                SaveRefreshedCookies(pr);
                 return pr;
             }
         }
@@ -77,6 +78,7 @@ namespace CmccEdu
                     settings.LoginMode = "dynamic";
                     var sms = portal.Login(settings, "sms", prompter);
                     if (sms.Ok) sms.Mode = "dynamic";
+                    SaveRefreshedCookies(sms);
                     return sms;
                 }
 
@@ -88,6 +90,7 @@ namespace CmccEdu
                     settings.LoginMode = "static";
                     var pw = portal.Login(settings, "password", prompter);
                     if (pw.Ok) pw.Mode = "static";
+                    SaveRefreshedCookies(pw);
                     return pw;
                 }
 
@@ -99,6 +102,46 @@ namespace CmccEdu
         {
             using (var portal = new Portal(s.Portal, s.Ssid, s.AcName))
                 return portal.Logout(s);
+        }
+
+        /// <summary>
+        /// 完整登录成功后，把服务端新下发的免密 cookie 存回配置。
+        /// 这批 cookie 的有效期是「登录时刻 + 90 天」，存下来才能滚动续期；
+        /// 不存的话配置里一直是第一次登录的那批，到期就废了。
+        /// </summary>
+        private static void SaveRefreshedCookies(LoginResult r)
+        {
+            if (r == null || !r.Ok) return;
+            if (string.IsNullOrWhiteSpace(r.AutoCookies)) return;
+
+            try
+            {
+                var cfg = Config.Load();
+                string oldEnc = cfg.GetString("autoCookiesEnc");
+                string oldPlain = null;
+                try { oldPlain = Config.Unprotect(oldEnc); } catch { /* 旧值坏了就覆盖 */ }
+
+                // 值没变就不用写盘
+                if (!string.IsNullOrEmpty(oldPlain) && oldPlain == r.AutoCookies)
+                {
+                    AppLog.Write("免密 cookie 未变化，跳过保存", "COOKIE");
+                    return;
+                }
+
+                cfg.SetSecret("autoCookies", "autoCookiesEnc", r.AutoCookies);
+                if (r.AutoCookiesExpire.HasValue)
+                    cfg.SetString("autoCookiesExpire", r.AutoCookiesExpire.Value.ToString("yyyy-MM-dd HH:mm:ss"));
+                cfg.Save();
+
+                string when = r.AutoCookiesExpire.HasValue
+                    ? "，有效期至 " + r.AutoCookiesExpire.Value.ToString("yyyy-MM-dd")
+                    : "";
+                AppLog.Write("已保存本次登录下发的新免密 cookie" + when, "COOKIE");
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("保存新 cookie 失败: " + ex.Message, "ERR");
+            }
         }
 
         private static LoginSettings Clone(LoginSettings s)

@@ -106,6 +106,37 @@ while (true) {
 网络事件唤醒：订阅 `NetworkAvailabilityChanged` / `NetworkAddressChanged`，
 睡眠切成 500ms 片，事件触发时立刻醒——不用干等一个完整间隔。
 
+## 0.4.1 免密 cookie 的续期（2.0.1 起自动）
+
+**实测结论**：服务端下发的 4 个 `AUTOAUTH_*` cookie，有效期是「**登录成功那一刻 + 90 天**」。
+
+| 登录时间 | 服务端给的到期日 |
+| --- | --- |
+| 2026-10-20 22:25:57 | 2027-01-18 22:25:57 |
+| 2026-10-21 12:15:29 | 2027-01-19 12:15:29 |
+| 2026-10-21 12:21:03 | 2027-01-19 12:21:03 |
+
+两行都是精确的 +90 天，说明是**滚动有效期**，不是固定到期日。
+
+> 踩过的坑：单日之内连测四次，到期日都是同一天，看起来像「固定到期日」。
+> 跨一天再测才看出差 1 天——**同日样本无法区分「固定」和「滚动」**。
+
+**实现**：
+
+```
+完整登录成功（短信/密码 POST）
+  → 从 CookieContainer 里筛出 4 个 AUTOAUTH_*
+  → 取最大 Expires 作为到期时间
+  → LoginResult.AutoCookies / AutoCookiesExpire
+  → LoginRunner.SaveRefreshedCookies()
+      → 与配置里的旧值比对，相同则跳过
+      → SetSecret("autoCookies", "autoCookiesEnc", ...)
+      → SetString("autoCookiesExpire", ...)
+      → Save()
+```
+
+cookie 免密登录（GET `authServlet`）不会产生新的 Set-Cookie，所以**不续期**——只有完整登录才会。
+
 ## 0.5 与 1.x 的关键差异
 
 | 维度 | 1.x（PowerShell） | 2.x（C#） |
@@ -128,11 +159,13 @@ while (true) {
   "interval": 60,
   "usernameEnc": "dpapi:...",
   "passwordEnc": "dpapi:...",
-  "autoCookiesEnc": "dpapi:..."
+  "autoCookiesEnc": "dpapi:...",
+  "autoCookiesExpire": "2027-01-19 12:21:03"
 }
 ```
 
 - 用「字典读入 → 原样回写」，不认识的键不会被丢弃
+- `autoCookiesExpire` 是明文（只是到期时间，不是凭据），登录成功后自动写入，面板据此显示剩余天数
 - 凭据一律 `dpapi:` 前缀（Windows DPAPI，绑定当前用户）
 - 首次运行没有 `config.json` 时自动生成默认配置
 

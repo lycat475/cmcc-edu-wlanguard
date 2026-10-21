@@ -23,6 +23,8 @@ namespace CmccEdu
         public string Kind;     // ok / no-cookie / no-ip / http / not-recognized / rejected / offline / need-manual
         public string Message;
         public string Mode;     // 本次登录实际使用的方式：dynamic / static
+        public string AutoCookies;  // 本次登录服务端新下发的免密 cookie（"k=v; k=v"），没有则为 null
+        public DateTime? AutoCookiesExpire;   // 这批 cookie 的到期时间（服务端给的到期日）
 
         public static LoginResult Fail(string kind, string message)
         {
@@ -446,7 +448,17 @@ namespace CmccEdu
             {
                 for (int i = 0; i < 8; i++)
                 {
-                    if (Network.IsOnline(4)) return LoginResult.Success("认证成功，外网已放行");
+                    if (Network.IsOnline(4))
+                    {
+                        var done = LoginResult.Success("认证成功，外网已放行");
+                        // 完整登录时服务端会重新下发一批 AUTOAUTH_* cookie，
+                        // 有效期是「此刻 + 90 天」。把它们带出去，让上层存回配置，
+                        // 下次就能用最新的一批（滚动续期）。
+                        DateTime? exp;
+                        done.AutoCookies = CollectAutoAuthCookies(out exp);
+                        done.AutoCookiesExpire = exp;
+                        return done;
+                    }
                     Thread.Sleep(900);
                 }
             }
@@ -583,6 +595,34 @@ namespace CmccEdu
             {
                 // 排查用的辅助日志，失败不影响认证
                 AppLog.Write("写认证日志失败: " + ex.Message, "ERR");
+            }
+        }
+
+        /// <summary>把本次会话里服务端下发的 AUTOAUTH_* cookie 拼成 "k=v; k=v"。</summary>
+        private string CollectAutoAuthCookies(out DateTime? expire)
+        {
+            expire = null;   // out 参数必须先赋值，否则 catch 分支编译不过
+            try
+            {
+                var parts = new List<string>();
+                DateTime? maxExp = null;
+                var uri = new Uri(_portalBase);
+                foreach (Cookie ck in _cookies.GetCookies(uri))
+                {
+                    if (!ck.Name.StartsWith("AUTOAUTH_", StringComparison.Ordinal)) continue;
+                    if (string.IsNullOrEmpty(ck.Value)) continue;
+                    parts.Add(ck.Name + "=" + ck.Value);
+                    if (ck.Expires != DateTime.MinValue && (!maxExp.HasValue || ck.Expires > maxExp.Value))
+                        maxExp = ck.Expires;
+                }
+                expire = maxExp;
+                return parts.Count > 0 ? string.Join("; ", parts) : null;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("收集新 cookie 失败: " + ex.Message, "ERR");
+                expire = null;
+                return null;
             }
         }
 

@@ -24,6 +24,7 @@ namespace CmccEdu
         // 控件
         private Label _lblState, _lblNet, _lblTime, _lblResult, _lblUser, _lblMode, _lblPass, _lblInterval, _lblLog;
         private Button _btnToggle, _btnCheck, _btnLogout, _btnRefresh, _btnSendCode, _btnSave, _btnStaticLogin, _btnLog, _btnClearLog;
+        private CheckBox _chkStopGuard;
         private TextBox _txtUser, _txtPass, _txtLog;
         private ComboBox _cmbMode, _cmbInterval, _cmbGuiMode;
         private CheckBox _chkAutoLogin, _chkShowPwd, _chkAutoGuard, _chkAutoGui;
@@ -73,7 +74,19 @@ namespace CmccEdu
 
             _btnToggle    = MakeButton("开启守护", 24, 62, 148, 38);
             _btnCheck     = MakeButton("cookies登录", 182, 62, 148, 38);
-            _btnLogout    = MakeButton("下线（关闭守护）", 340, 62, 156, 38);
+            _btnLogout    = MakeButton("下线", 340, 62, 156, 32);
+
+            // 下线时是否连带关闭守护：默认勾选（和旧行为一致，避免下线后几秒被登回去）
+            _chkStopGuard = new CheckBox
+            {
+                Location = new Point(340, 97),
+                Size = new Size(160, 18),
+                Text = "同时关闭守护",
+                Checked = true,
+                ForeColor = CMuted,
+                Font = new Font("微软雅黑", 9f)
+            };
+            Controls.Add(_chkStopGuard);
 
             Controls.Add(MakeDivider(24, 112, 472));
 
@@ -672,16 +685,24 @@ namespace CmccEdu
             _btnLogout.Enabled = false;
             _btnLogout.Text = "下线中…";
 
-            // 先停守护：否则下线断开后它会在几秒内用 cookie 登回去
-            try { Guard.Stop(); } catch (Exception ex) { AppLog.WriteErrorLog("停止守护失败: " + ex.Message); }
-            AppLog.WriteErrorLog("下线：已先停止守护进程");
+            // 勾选了「同时关闭守护」才停：否则下线断开后它会在几秒内用 cookie 登回去
+            bool stopGuard = _chkStopGuard == null || _chkStopGuard.Checked;
+            if (stopGuard)
+            {
+                try { Guard.Stop(); } catch (Exception ex) { AppLog.WriteErrorLog("停止守护失败: " + ex.Message); }
+                AppLog.WriteErrorLog("下线：已先停止守护进程");
+            }
+            else
+            {
+                AppLog.WriteErrorLog("下线：按用户选择保留守护进程");
+            }
 
             LoginSettings settings;
             try { settings = Config.Load().GetLoginSettings(); }
             catch (Exception ex)
             {
                 _btnLogout.Enabled = true;
-                _btnLogout.Text = "下线（关闭守护）";
+                _btnLogout.Text = "下线";
                 MessageBox.Show(ex.Message, "下线结果", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -697,7 +718,7 @@ namespace CmccEdu
                     BeginInvoke(new Action(() =>
                     {
                         _btnLogout.Enabled = true;
-                        _btnLogout.Text = "下线（关闭守护）";
+                        _btnLogout.Text = "下线";
                         AppLog.WriteErrorLog("下线结果：" + result.Message);
                         if (result.Ok) Status.Write("offline", result.Message, "logout", 60);
                         RefreshUi();
@@ -818,6 +839,24 @@ namespace CmccEdu
             }
         }
 
+        /// <summary>免密 cookie 的剩余有效期，显示在网络状态后面。</summary>
+        private string CookieHint()
+        {
+            try
+            {
+                string raw = Config.Load().GetString("autoCookiesExpire");
+                if (string.IsNullOrWhiteSpace(raw)) return "";
+                DateTime dt;
+                if (!DateTime.TryParse(raw, out dt)) return "";
+
+                int days = (int)Math.Floor((dt - DateTime.Now).TotalDays);
+                if (days < 0) return "    ·  cookie 已过期（" + dt.ToString("yyyy-MM-dd") + "）";
+                if (days == 0) return "    ·  cookie 今天到期";
+                return "    ·  cookie 至 " + dt.ToString("yyyy-MM-dd") + "（剩 " + days + " 天）";
+            }
+            catch { return ""; }
+        }
+
         private void ApplyStateText(string state)
         {
             switch (state)
@@ -829,6 +868,7 @@ namespace CmccEdu
                 case "error":   _lblNet.Text = "网络状态：异常"; _lblNet.ForeColor = CBad; break;
                 default:        _lblNet.Text = "网络状态：未知"; _lblNet.ForeColor = CMuted; break;
             }
+            _lblNet.Text += CookieHint();
         }
 
         private void RefreshLogPanel()
