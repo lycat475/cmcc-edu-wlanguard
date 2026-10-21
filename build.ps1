@@ -15,6 +15,29 @@ if ($sourceFiles.Count -eq 0) { throw 'src 目录里没有 .cs 文件' }
 
 New-Item -ItemType Directory -Path $distDir -Force | Out-Null
 
+# 把 VERSION 里的版本号生成成一个常量编进 exe，界面上显示用。
+# 放在临时目录，不弄脏 src。
+$version = '0.0.0'
+$versionFile = Join-Path $root 'VERSION'
+if (Test-Path $versionFile) { $version = ((Get-Content $versionFile -Raw) -replace '\s', '') }
+if (-not $version) { $version = '0.0.0' }
+
+$genDir = Join-Path $env:TEMP 'cmcc-gen'
+New-Item -ItemType Directory -Path $genDir -Force | Out-Null
+$genFile = Join-Path $genDir 'AppVersion.g.cs'
+$genCode = @"
+// 由 build.ps1 自动生成，不要手改
+namespace CmccEdu
+{
+    internal static class AppInfo
+    {
+        public const string Version = "VERSION_PLACEHOLDER";
+    }
+}
+"@
+$genCode = $genCode.Replace('VERSION_PLACEHOLDER', $version)
+[System.IO.File]::WriteAllText($genFile, $genCode, (New-Object System.Text.UTF8Encoding($false)))
+
 $refList = @(
     'System.dll'
     'System.Core.dll'
@@ -37,8 +60,9 @@ $cscArgs = @(
 )
 foreach ($r in $refList) { $cscArgs += ('/r:' + $r) }
 foreach ($f in $sourceFiles) { $cscArgs += $f.FullName }
+$cscArgs += $genFile   # 版本号常量
 
-Write-Host ('编译 ' + $sourceFiles.Count + ' 个源文件…')
+Write-Host ('编译 ' + ($sourceFiles.Count + 1) + ' 个源文件（含版本号常量）…')
 & $cscPath $cscArgs
 if ($LASTEXITCODE -ne 0) { throw ('编译失败，退出码 ' + $LASTEXITCODE) }
 

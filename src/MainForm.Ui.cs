@@ -12,6 +12,8 @@ namespace CmccEdu
     /// <summary> 界面构建与绘制、托盘、状态显示。</summary>
     internal sealed partial class MainForm
     {
+        private Label _lblVersion;
+
         private void BuildUi()
         {
             Text = "CMCC-EDU 网络守护";
@@ -21,7 +23,7 @@ namespace CmccEdu
             MaximizeBox = false;
             // 控件坐标是按 520x624 设计的，这里锁死客户区，
             // 否则窗口默认尺寸会让右侧多出空白、卡片左右不对称。
-            ClientSize = new Size(520, 624);
+            ClientSize = new Size(520, 642);   // 底部多一行用于版本号签名
             BackColor = Color.White;
             Font = new Font("微软雅黑", 9f);
             ForeColor = CText;
@@ -146,12 +148,28 @@ namespace CmccEdu
 
             _chkAutoGuard = new UiCheckBox { Location = new Point(24, 586), Size = new Size(148, 26), Text = "开机启动守护" };
             _chkAutoGui   = new UiCheckBox { Location = new Point(180, 586), Size = new Size(148, 26), Text = "开机启动面板" };
-            _cmbGuiMode   = new DropDownField { Location = new Point(340, 586), Size = new Size(116, 26), SurfaceColor = CCard };
+            _cmbGuiMode   = new DropDownField { Location = new Point(340, 586), Size = new Size(96, 26), SurfaceColor = CCard };
             _cmbGuiMode.AddRange(new object[] { "托盘", "任务栏" });
             _cmbGuiMode.SelectedIndex = 0;
             Controls.Add(_chkAutoGuard);
             Controls.Add(_chkAutoGui);
             Controls.Add(_cmbGuiMode);
+
+            // 右下角版本号：小字、灰色，不抢眼。
+            // 版本号由 build.ps1 从 VERSION 生成成常量，不需要改代码。
+            // 版本号 + 作者：合成一行，单独占底部一行，右对齐到卡片内边距
+            _lblVersion = new Label
+            {
+                AutoSize = false,
+                Location = new Point(280, 625),
+                Size = new Size(224, 15),
+                Text = "v" + AppInfo.Version + " · by lycat475",
+                TextAlign = ContentAlignment.MiddleRight,
+                ForeColor = CMuted,
+                BackColor = Color.White,
+                Font = new Font("微软雅黑", 7.5f)
+            };
+            Controls.Add(_lblVersion);
 
             // 事件
             _btnToggle.Click += OnToggleGuardClick;
@@ -263,6 +281,7 @@ namespace CmccEdu
         {
             foreach (Control ctl in Controls)
             {
+                if (ctl == _lblVersion) continue;   // 页脚在卡片外面，保持白底
                 if (ctl is Label || ctl is CheckBox) ctl.BackColor = CCard;
             }
         }
