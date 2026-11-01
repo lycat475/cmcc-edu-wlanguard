@@ -70,8 +70,6 @@ namespace CmccEdu
 
         // ---------------------------------------------------------------- 启动
 
-        private readonly List<MenuEntry> _menuEntries = new List<MenuEntry>();
-        private MenuEntry _menuToggle;
 
         // ---------------------------------------------------------------- 配置
 

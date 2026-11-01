@@ -101,15 +101,16 @@ namespace CmccEdu
             }
         }
 
-        public static LoginResult Logout(LoginSettings s)
+        public static LoginResult Logout(LoginSettings s, int verifyDelayMs = 3000, int timeoutMs = 20000)
         {
             using (var portal = new Portal(s.Portal, s.Ssid, s.AcName))
-                return portal.Logout(s);
+                return portal.Logout(s, verifyDelayMs, timeoutMs);
         }
 
         /// <summary>
         /// 完整登录成功后，把服务端新下发的免密 cookie 存回配置。
-        /// 这批 cookie 的有效期是「登录时刻 + 90 天」，存下来才能滚动续期；
+        /// 这批 cookie 的 Expires 是「登录时刻 + 90 天」，但服务端每月 1 日会重置登录状态，
+        /// 存下来才能滚动续期；
         /// 不存的话配置里一直是第一次登录的那批，到期就废了。
         /// </summary>
         private static void SaveRefreshedCookies(LoginResult r)
@@ -137,7 +138,7 @@ namespace CmccEdu
                 cfg.Save();
 
                 string when = r.AutoCookiesExpire.HasValue
-                    ? "，有效期至 " + r.AutoCookiesExpire.Value.ToString("yyyy-MM-dd")
+                    ? "，服务端给的到期日 " + r.AutoCookiesExpire.Value.ToString("yyyy-MM-dd")
                     : "";
                 AppLog.Write("已保存本次登录下发的新免密 cookie" + when, "COOKIE");
             }

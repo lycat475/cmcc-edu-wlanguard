@@ -27,6 +27,9 @@ namespace CmccEdu
             try { InitTray(); }
             catch (Exception ex) { AppLog.WriteErrorLog("创建托盘失败: " + ex.Message); }
 
+            // 关机/重启前自动下线
+            ShutdownLogout.Attach();
+
             // 记录日志基线：只显示本次启动之后的内容
             try { _logOffset = File.Exists(AppEnv.LogPath) ? new FileInfo(AppEnv.LogPath).Length : 0; }
             catch { _logOffset = 0; }
@@ -397,7 +400,8 @@ namespace CmccEdu
 
         /// <summary>
         /// 「更新cookies」：发短信拿一批新的免密 cookie。
-        /// 服务端每完成一次完整登录就会重新下发 4 个 AUTOAUTH_*，有效期是「此刻 + 90 天」，
+        /// 服务端每完成一次完整登录就会重新下发 4 个 AUTOAUTH_*，Expires 是「此刻 + 90 天」，
+        /// 但每月 1 日服务端会重置登录状态，实际只到下月 1 日；
         /// 登录成功后 LoginRunner 会自动把它们存回配置。
         /// </summary>
         private void OnRefreshClick(object sender, EventArgs e)

@@ -295,26 +295,7 @@ namespace CmccEdu
                 Visible = true
             };
 
-            // 托盘菜单也用分层窗口菜单：圆角真正抗锯齿，和下拉菜单一致
-
-            var openEntry = new MenuEntry { Text = "打开面板", Click = delegate { ShowPanel(); } };
-            _menuToggle = new MenuEntry
-            {
-                Text = Guard.IsRunning() ? "关闭守护" : "开启守护",
-                Click = delegate
-                {
-                    if (Guard.IsRunning()) Guard.Stop(); else Guard.Start();
-                    RefreshUi();
-                }
-            };
-            var shortcutEntry = new MenuEntry { Text = "创建桌面快捷方式", Click = delegate { CreateShortcut(); } };
-            var exitEntry = new MenuEntry { Text = "退出面板", Click = delegate { OnTrayExit(); } };
-
-            _menuEntries.Add(openEntry);
-            _menuEntries.Add(_menuToggle);
-            _menuEntries.Add(shortcutEntry);
-            _menuEntries.Add(MenuEntry.Sep());
-            _menuEntries.Add(exitEntry);
+            // 菜单项每次右键时现建，这样勾选状态（守护开没开、关机下线开没开）总是最新的
             _tray.MouseDoubleClick += (s, e) => ShowPanel();
             _tray.MouseClick += (s, e) =>
             {
@@ -330,7 +311,31 @@ namespace CmccEdu
         {
             try
             {
-                var menu = new LayeredMenu(_menuEntries);
+                bool running = Guard.IsRunning();
+                var entries = new List<MenuEntry>();
+
+                entries.Add(new MenuEntry { Text = "打开面板", Click = delegate { ShowPanel(); } });
+                entries.Add(new MenuEntry
+                {
+                    Text = running ? "关闭守护" : "开启守护",
+                    Click = delegate
+                    {
+                        if (Guard.IsRunning()) Guard.Stop(); else Guard.Start();
+                        Guard.InvalidateRunningCache();
+                        RefreshUi();
+                    }
+                });
+                entries.Add(new MenuEntry { Text = "创建桌面快捷方式", Click = delegate { CreateShortcut(); } });
+                entries.Add(new MenuEntry
+                {
+                    Text = "关机前自动下线",
+                    Checked = ShutdownLogout.IsEnabled(),
+                    Click = delegate { ShutdownLogout.SetEnabled(!ShutdownLogout.IsEnabled()); }
+                });
+                entries.Add(MenuEntry.Sep());
+                entries.Add(new MenuEntry { Text = "退出面板", Click = delegate { OnTrayExit(); } });
+
+                var menu = new LayeredMenu(entries);
                 menu.ShowAt(Cursor.Position);
             }
             catch (Exception ex) { AppLog.WriteErrorLog("弹出托盘菜单失败: " + ex.Message); }
@@ -375,7 +380,6 @@ namespace CmccEdu
             _lblState.DotColor = running ? COk : Color.FromArgb(156, 163, 175);
             _lblState.ForeColor = running ? COk : CMuted;
             _btnToggle.Text = running ? "关闭守护" : "开启守护";
-            if (_menuToggle != null) _menuToggle.Text = running ? "关闭守护" : "开启守护";
 
             bool busy = st != null && (st.State == "busy" || st.State == "captcha");
             bool online = st != null && st.State == "online";
@@ -424,7 +428,7 @@ namespace CmccEdu
             }
         }
 
-        /// <summary>免密 cookie 的剩余有效期，显示在网络状态后面。</summary>
+        /// <summary>免密 cookie 的剩余有效期，显示在上次检查那一行后面。</summary>
         private string CookieHint()
         {
             try
@@ -434,10 +438,19 @@ namespace CmccEdu
                 DateTime dt;
                 if (!DateTime.TryParse(raw, out dt)) return "";
 
-                int days = (int)Math.Floor((dt - DateTime.Now).TotalDays);
-                if (days < 0) return "    ·  cookie 已过期（" + dt.ToString("yyyy-MM-dd") + "）";
+                // 服务端给的到期日是「登录 + 90 天」，但每月 1 日会整体重置一次登录状态，
+                // 实际能用到的是两者中更早的那个。
+                DateTime now = DateTime.Now;
+                DateTime nextMonth = new DateTime(now.Year, now.Month, 1).AddMonths(1);
+                bool monthly = nextMonth < dt;
+                DateTime end = monthly ? nextMonth : dt;
+
+                if (end < now) return "    ·  cookie 已过期（" + dt.ToString("yyyy-MM-dd") + "）";
+                if (monthly) return "    ·  cookie 至 " + end.ToString("yyyy-MM-dd") + "（月初重置）";
+
+                int days = (int)Math.Floor((end - now).TotalDays);
                 if (days == 0) return "    ·  cookie 今天到期";
-                return "    ·  cookie 至 " + dt.ToString("yyyy-MM-dd") + "（剩 " + days + " 天）";
+                return "    ·  cookie 至 " + end.ToString("yyyy-MM-dd") + "（剩 " + days + " 天）";
             }
             catch { return ""; }
         }

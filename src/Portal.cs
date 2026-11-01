@@ -83,7 +83,7 @@ namespace CmccEdu
 
         // ---------------------------------------------------------------- HTTP
 
-        private HttpWebRequest NewRequest(string url, string method)
+        private HttpWebRequest NewRequest(string url, string method, int timeoutMs = 20000)
         {
             var req = (HttpWebRequest)WebRequest.Create(url);
             req.Method = method;
@@ -91,19 +91,19 @@ namespace CmccEdu
             req.UserAgent = _userAgent;
             req.AllowAutoRedirect = true;
             req.MaximumAutomaticRedirections = 10;
-            req.Timeout = 20000;
-            req.ReadWriteTimeout = 20000;
+            req.Timeout = timeoutMs;
+            req.ReadWriteTimeout = timeoutMs;
             req.KeepAlive = true;
             return req;
         }
 
-        private string GetText(string url, out string finalUrl)
+        private string GetText(string url, out string finalUrl, int timeoutMs = 20000)
         {
             string text = null;
             finalUrl = url;
             try
             {
-                var req = NewRequest(url, "GET");
+                var req = NewRequest(url, "GET", timeoutMs);
                 using (var resp = (HttpWebResponse)req.GetResponse())
                 {
                     finalUrl = resp.ResponseUri != null ? resp.ResponseUri.AbsoluteUri : url;
@@ -509,7 +509,7 @@ namespace CmccEdu
                     {
                         var done = LoginResult.Success("认证成功，外网已放行");
                         // 完整登录时服务端会重新下发一批 AUTOAUTH_* cookie，
-                        // 有效期是「此刻 + 90 天」。把它们带出去，让上层存回配置，
+                        // Expires 是「此刻 + 90 天」（每月 1 日会整体重置）。把它们带出去，让上层存回配置，
                         // 下次就能用最新的一批（滚动续期）。
                         DateTime? exp;
                         done.AutoCookies = CollectAutoAuthCookies(out exp);
@@ -575,7 +575,9 @@ namespace CmccEdu
 
         // ---------------------------------------------------------------- 下线
 
-        public LoginResult Logout(LoginSettings s)
+        /// <param name="verifyDelayMs">下线后等多久再复查网络是否真的断了。关机场景传 0，别浪费时间。</param>
+        /// <param name="timeoutMs">单个请求的超时。</param>
+        public LoginResult Logout(LoginSettings s, int verifyDelayMs = 3000, int timeoutMs = 20000)
         {
             var sess = OpenCookieSession(s);
             if (!sess.Ok)
@@ -596,10 +598,10 @@ namespace CmccEdu
 
             string logoutFinal;
             string logoutUrl = sess.Base + "/logoutServlet?paramStr=" + ps;
-            string text = GetText(logoutUrl, out logoutFinal);
+            string text = GetText(logoutUrl, out logoutFinal, timeoutMs);
             if (text == null) return LoginResult.Fail("http", "下线请求失败");
 
-            Thread.Sleep(3000);
+            if (verifyDelayMs > 0) Thread.Sleep(verifyDelayMs);
             if (!Network.IsOnline()) return LoginResult.Success("已下线，外网已断开");
 
             string snippet = HtmlToText(text);
